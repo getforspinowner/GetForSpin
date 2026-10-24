@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ID Game & Thread Chat System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @keyframes spin-fast { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    @keyframes pulse-glow { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.8; } }
+    .spin-anim { animation: spin-fast 0.5s cubic-bezier(0.15, 0.85, 0.35, 1.2) infinite; }
+    .click-btn { transition: transform 0.08s ease, filter 0.15s ease; }
+    .click-btn:active { transform: scale(0.90); filter: brightness(1.2); }
+    .glow-effect { animation: pulse-glow 3s infinite ease-in-out; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #090d16; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+  </style>
+</head>
+<body class="bg-[#070a12] text-slate-100 min-h-screen flex flex-col font-sans selection:bg-indigo-500 selection:text-white relative overflow-x-hidden">
+
+  <!-- BACKGROUND DECORATIONS -->
+  <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-gradient-to-b from-indigo-600/10 via-cyan-600/5 to-transparent rounded-full blur-3xl pointer-events-none glow-effect"></div>
+
+  <!-- ==================== LOGIN / REGISTER SCREEN ==================== -->
+  <div id="login-screen" class="fixed inset-0 bg-[#070a12]/95 z-50 flex items-center justify-center p-4 backdrop-blur-xl">
+    <div class="bg-slate-900/90 border border-slate-800 p-8 rounded-3xl shadow-2xl max-w-md w-full text-center relative overflow-hidden">
+      <div class="absolute -top-12 -left-12 w-36 h-36 bg-indigo-600/20 rounded-full blur-2xl pointer-events-none"></div>
+      <div class="absolute -bottom-12 -right-12 w-36 h-36 bg-cyan-600/20 rounded-full blur-2xl pointer-events-none"></div>
+
+      <div class="inline-flex p-4 rounded-2xl bg-gradient-to-tr from-indigo-500/20 to-cyan-500/20 text-indigo-400 mb-5 text-4xl border border-indigo-500/30 shadow-inner">
+        <i class="fa-solid fa-gamepad drop-shadow-[0_0_10px_rgba(99,102,241,0.5)]"></i>
+      </div>
+      <h1 class="text-2xl font-black mb-1 tracking-tight bg-gradient-to-r from-white via-indigo-200 to-slate-400 bg-clip-text text-transparent">ゲームを始める</h1>
+      <p class="text-xs text-slate-400 mb-6">IDを入力してスタートしてください</p>
+      
+      <div class="space-y-4 text-left mb-6">
+        <div>
+          <label class="block text-xs font-bold text-slate-400 mb-1.5">ユーザーID</label>
+          <input type="text" id="user-id-input" placeholder="例: Abc123" class="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3.5 focus:outline-none focus:border-indigo-500 text-slate-100 font-semibold transition shadow-inner">
+          <p class="text-xs text-indigo-400 mt-2.5 font-bold flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-info text-indigo-400"></i>
+            <span>zeppetのIDを入力</span>
+          </p>
+        </div>
+
+        <!-- HIDDEN ADMIN PASSWORD AREA (Triggered by ;admin) -->
+        <div id="login-admin-pass-container" class="hidden bg-red-950/40 border border-red-800/60 p-4 rounded-2xl space-y-2 text-left animate-fadeIn">
+          <label class="block text-xs font-bold text-red-300 flex items-center gap-1.5">
+            <i class="fa-solid fa-shield-halved text-red-400"></i>管理者認証コードを入力
+          </label>
+          <input type="password" id="login-admin-pass-input" placeholder="パスワードを入力..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono">
+        </div>
+      </div>
+
+      <button id="start-btn" onclick="handleLoginButtonClick()" class="w-full py-4 bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 font-black rounded-xl shadow-lg shadow-indigo-600/30 transition active:scale-95 text-sm tracking-wide text-white">
+        ログイン / 参加する
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== MAIN APP SCREEN ==================== -->
+  <div id="app-screen" class="hidden flex-1 flex flex-col max-w-2xl w-full mx-auto p-4 pb-24 z-10">
+    
+    <!-- HEADER STATUS BAR -->
+    <header class="bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-slate-800/80 shadow-xl mb-4 flex items-center justify-between sticky top-4 z-40">
+      <div class="flex items-center space-x-3">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center font-black text-xl text-white shadow-md shadow-indigo-500/20" id="avatar-icon">
+          U
+        </div>
+        <div>
+          <div class="font-bold flex items-center gap-2 text-sm">
+            <span id="display-id">ID</span>
+            <span id="admin-badge" class="hidden px-2 py-0.5 text-[9px] bg-red-600 text-white font-black rounded-full uppercase tracking-wider shadow-sm">ADMIN</span>
+          </div>
+          <div class="text-xs text-slate-400 flex items-center gap-3.5 mt-1 font-mono">
+            <span class="flex items-center"><i class="fa-solid fa-gem text-cyan-400 mr-1 text-xs"></i><span id="gem-count" class="font-bold text-slate-200">0</span></span>
+            <span class="flex items-center"><i class="fa-solid fa-arrows-rotate text-emerald-400 mr-1 text-xs"></i><span id="spin-count" class="font-bold text-slate-200">0</span> / 25</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <button onclick="logout()" class="p-2 text-slate-400 hover:text-slate-200 transition rounded-xl hover:bg-slate-800/80">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- NAVIGATION TABS -->
+    <nav id="nav-tabs-container" class="grid grid-cols-4 gap-2 mb-4 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 shadow-md">
+      <button onclick="switchTab('spin')" id="tab-spin" class="tab-btn py-2.5 text-xs font-bold rounded-xl transition text-indigo-400 bg-slate-800 border border-slate-700/50 flex flex-col items-center gap-1">
+        <i class="fa-solid fa-arrows-rotate text-sm"></i>
+        <span>スピン</span>
+      </button>
+      <button onclick="switchTab('clicker')" id="tab-clicker" class="tab-btn py-2.5 text-xs font-bold rounded-xl transition text-slate-400 flex flex-col items-center gap-1">
+        <i class="fa-solid fa-hand-pointer text-sm"></i>
+        <span>クリッカー</span>
+      </button>
+      <button onclick="switchTab('chat')" id="tab-chat" class="tab-btn py-2.5 text-xs font-bold rounded-xl transition text-slate-400 flex flex-col items-center gap-1">
+        <i class="fa-solid fa-comments text-sm"></i>
+        <span>メッセージ</span>
+      </button>
+      <!-- ADMIN CONTROL TAB -->
+      <button onclick="switchTab('admin')" id="tab-admin" class="tab-btn hidden py-2.5 text-xs font-bold rounded-xl transition text-red-400 flex flex-col items-center gap-1">
+        <i class="fa-solid fa-user-shield text-sm"></i>
+        <span>管理者</span>
+      </button>
+      <button onclick="switchTab('ranking')" id="tab-ranking" class="tab-btn py-2.5 text-xs font-bold rounded-xl transition text-slate-400 flex flex-col items-center gap-1">
+        <i class="fa-solid fa-trophy text-sm"></i>
+        <span>順位</span>
+      </button>
+    </nav>
+
+    <!-- TAB CONTENTS -->
+    <main class="flex-1">
+      
+      <!-- ==================== SPIN TAB ==================== -->
+      <section id="content-spin" class="space-y-4">
+        <div class="bg-slate-900/90 p-6 rounded-3xl border border-slate-800 text-center relative overflow-hidden shadow-2xl backdrop-blur-md">
+          <h2 class="text-xl font-black mb-1">ガチャスピン</h2>
+          <p class="text-xs text-slate-400 mb-6">1時間に1スピン自動回復（オフラインでも回復・最大25回）</p>
+
+          <div class="w-36 h-36 mx-auto mb-6 rounded-full border-4 border-indigo-500/20 flex items-center justify-center bg-slate-950 shadow-2xl relative">
+            <i id="spin-icon" class="fa-solid fa-dharmachakra text-6xl text-indigo-400 drop-shadow-[0_0_20px_rgba(99,102,241,0.6)]"></i>
+          </div>
+
+          <div id="spin-result" class="h-8 mb-4 font-black text-amber-400 text-base flex items-center justify-center"></div>
+
+          <button id="spin-btn" onclick="doSpin()" class="w-full py-4 bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 font-black text-base rounded-2xl shadow-lg shadow-indigo-600/30 transition active:scale-95 text-white">
+            スピンを引く (-1回)
+          </button>
+
+          <div class="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 font-mono">
+            <span>次回自動回復まで:</span>
+            <span id="refill-timer" class="text-indigo-400 font-bold">--:--</span>
+          </div>
+        </div>
+
+        <!-- GEM SHOP & ODDS -->
+        <div class="bg-slate-900/90 p-5 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-md">
+          <h3 class="text-sm font-bold mb-3 flex items-center gap-2"><i class="fa-solid fa-store text-amber-400"></i>ゼムショップ</h3>
+          
+          <button onclick="buySpinWithGems()" class="w-full bg-slate-950 hover:bg-slate-800/80 border border-slate-800 p-3.5 rounded-2xl flex items-center justify-between transition group">
+            <span class="text-xs font-bold flex items-center gap-2"><i class="fa-solid fa-circle-plus text-emerald-400 text-sm"></i>1スピン購入 (上限25回)</span>
+            <span class="text-xs bg-cyan-950 text-cyan-300 font-black px-3 py-1.5 rounded-xl border border-cyan-800/60 font-mono">5 ゼム</span>
+          </button>
+
+          <h3 class="text-xs font-bold text-slate-400 mt-6 mb-3 flex items-center gap-1.5"><i class="fa-solid fa-chart-pie"></i>排出確率一覧</h3>
+          <ul class="text-xs space-y-2 text-slate-300 font-mono">
+            <li class="flex justify-between py-1.5 px-3 bg-slate-950/60 rounded-xl border border-slate-800/40"><span>14 ゼム</span><span class="text-amber-400 font-bold">0.01%</span></li>
+            <li class="flex justify-between py-1.5 px-3 bg-slate-950/60 rounded-xl border border-slate-800/40"><span>10 ゼム</span><span class="text-amber-400 font-bold">0.05%</span></li>
+            <li class="flex justify-between py-1.5 px-3 bg-slate-950/60 rounded-xl border border-slate-800/40"><span>7 ゼム</span><span class="text-amber-400 font-bold">0.10%</span></li>
+            <li class="flex justify-between py-1.5 px-3 bg-slate-950/60 rounded-xl border border-slate-800/40"><span>5 ゼム</span><span class="text-amber-400 font-bold">0.50%</span></li>
+            <li class="flex justify-between py-1.5 px-3 bg-slate-950/60 rounded-xl border border-slate-800/40"><span>3 ゼム</span><span class="text-amber-400 font-bold">1.00%</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ==================== CLICKER TAB ==================== -->
+      <section id="content-clicker" class="hidden space-y-4">
+        <div class="bg-slate-900/90 p-6 rounded-3xl border border-slate-800 text-center shadow-2xl backdrop-blur-md">
+          <h2 class="text-xl font-black mb-1">クリッカー</h2>
+          <p class="text-xs text-slate-400 mb-6">タップして0.1%の確率で1スピンを獲得！ (CD: 0.2秒)</p>
+
+          <div class="grid grid-cols-2 gap-3 mb-6 bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800/80 font-mono text-xs">
+            <div class="text-left">
+              <span class="text-slate-400 block text-[10px]">総クリック数</span>
+              <strong id="total-click-count" class="text-indigo-400 text-sm font-bold">0</strong> 回
+            </div>
+            <div class="text-right">
+              <span class="text-slate-400 block text-[10px]">本日のクリック上限</span>
+              <strong id="daily-click-count" class="text-emerald-400 text-sm font-bold">0</strong> / 2500 回
+            </div>
+          </div>
+
+          <button id="clicker-btn" onclick="doClick()" class="click-btn w-44 h-44 mx-auto rounded-full bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 border-4 border-indigo-300/30 shadow-[0_0_35px_rgba(99,102,241,0.5)] flex flex-col items-center justify-center">
+            <i class="fa-solid fa-hand-pointer text-4xl mb-2 text-white drop-shadow-md"></i>
+            <span class="text-xs font-black tracking-widest text-white uppercase">TAP!</span>
+          </button>
+
+          <div id="clicker-feedback" class="h-8 mt-6 font-bold text-emerald-400 text-sm flex items-center justify-center"></div>
+        </div>
+      </section>
+
+      <!-- ==================== CHAT TAB ==================== -->
+      <section id="content-chat" class="hidden space-y-4">
+        <div class="bg-indigo-950/30 border border-indigo-800/40 p-4.5 rounded-3xl text-xs space-y-2 text-indigo-200/90 shadow-lg backdrop-blur-md">
+          <div class="font-black text-sm text-indigo-300 mb-1 flex items-center gap-2">
+            <i class="fa-solid fa-circle-info text-indigo-400"></i> メッセージ機能の使い方
+          </div>
+          <div class="space-y-1 leading-relaxed text-[11px] text-slate-300">
+            <p>・<strong>新規チャット:</strong> ゼムを消費して管理者にメッセージを送信できます。</p>
+            <p>・<strong>無料返信:</strong> 管理者から返信が来たチャット内では、<strong>ゼムを使わずに無料</strong>で送信できます。</p>
+            <p>・<strong>既読表示:</strong> あなたのメッセージを管理者が確認すると<strong>「既読」</strong>が表示されます。</p>
+            <p>・<strong>メッセージ削除:</strong> 削除申請が管理者に承認されると削除が完了します。</p>
+          </div>
+        </div>
+
+        <!-- NEW THREAD FORM -->
+        <div id="new-thread-form-container" class="bg-slate-900/90 p-5 rounded-3xl border border-slate-800 shadow-xl space-y-4 backdrop-blur-md">
+          <h3 class="text-sm font-bold flex items-center gap-2"><i class="fa-solid fa-paper-plane text-indigo-400"></i>新規メッセージを送信</h3>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-400 mb-1">使用するゼム数</label>
+              <input type="number" id="chat-gem-input" min="1" placeholder="例: 5" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-400 mb-1">欲しりすの名前</label>
+              <textarea id="chat-msg-input" rows="3" placeholder="欲しい欲しりすの特徴などを書く！" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 resize-none"></textarea>
+            </div>
+            <button onclick="sendNewThread()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 font-bold text-xs rounded-xl shadow-lg transition active:scale-95 text-white">
+              スレッドを作成して送信
+            </button>
+          </div>
+        </div>
+
+        <!-- ADMIN MESSAGE NOTICE -->
+        <div id="admin-chat-notice" class="hidden bg-red-950/40 border border-red-800/60 p-4 rounded-3xl text-xs text-red-200 text-center font-bold">
+          <i class="fa-solid fa-shield-halved mr-1.5 text-red-400"></i>管理者アカウントです。全ユーザーからのメッセージ対応・返信が以下で行えます。
+        </div>
+
+        <!-- THREADS LIST -->
+        <div id="user-threads-list" class="space-y-4"></div>
+      </section>
+
+      <!-- ==================== ADMIN MANAGEMENT TAB ==================== -->
+      <section id="content-admin" class="hidden space-y-4">
+        <div class="bg-slate-900/90 p-5 rounded-3xl border border-red-900/50 shadow-2xl backdrop-blur-md space-y-4">
+          <h2 class="text-base font-bold flex items-center gap-2 text-red-400"><i class="fa-solid fa-sliders"></i>ユーザーリソース増減・操作</h2>
+          <p class="text-xs text-slate-400">任意のプレイヤーのゼムやスピン数を手動で変更できます。</p>
+          
+          <div class="space-y-3 pt-2">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-400 mb-1">対象ユーザーID</label>
+              <input type="text" id="admin-target-id" placeholder="対象ユーザーIDを入力" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-400 mb-1">ゼムの増減 (+ / -)</label>
+                <input type="number" id="admin-add-gems" placeholder="例: 10 または -5" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-400 mb-1">スピンの増減 (+ / -)</label>
+                <input type="number" id="admin-add-spins" placeholder="例: 5 または -2" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono">
+              </div>
+            </div>
+            <button onclick="adminModifyUser()" class="w-full py-3 bg-red-600 hover:bg-red-500 font-bold text-xs rounded-xl transition text-white shadow-lg shadow-red-600/30">
+              変更を適用する
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== RANKING TAB ==================== -->
+      <section id="content-ranking" class="hidden space-y-4">
+        <div class="bg-slate-900/90 p-5 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-md">
+          <h2 class="text-base font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-trophy text-amber-400"></i>累積使用ゼムランキング</h2>
+          <div id="ranking-list" class="space-y-2"></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script>
+    const MAX_SPINS = 25;
+    const DAILY_CLICK_LIMIT = 2500;
+    const ADMIN_PASS = "y@97324568";
+
+    // STATE
+    let currentUserId = localStorage.getItem('app_current_user') || null;
+    let isAdmin = localStorage.getItem('app_is_admin') === 'true';
+    let clickCooldown = false;
+
+    // INIT
+    window.addEventListener('DOMContentLoaded', () => {
+      initData();
+      if (currentUserId) {
+        showApp();
+      } else {
+        showLogin();
+      }
+      setInterval(updateRefillTimer, 1000);
+    });
+
+    function initData() {
+      if (!localStorage.getItem('app_users')) localStorage.setItem('app_users', JSON.stringify({}));
+      if (!localStorage.getItem('app_threads')) localStorage.setItem('app_threads', JSON.stringify([]));
+    }
+
+    function getUsers() { return JSON.parse(localStorage.getItem('app_users') || '{}'); }
+    function saveUsers(users) { localStorage.setItem('app_users', JSON.stringify(users)); }
+    function getThreads() { return JSON.parse(localStorage.getItem('app_threads') || '[]'); }
+    function saveThreads(threads) { localStorage.setItem('app_threads', JSON.stringify(threads)); }
+
+    function getTodayKey() {
+      const d = new Date();
+      return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+    }
+
+    function getCurrentUser() {
+      const users = getUsers();
+      if (!users[currentUserId]) {
+        users[currentUserId] = { 
+          id: currentUserId, 
+          gems: 0, 
+          spins: 10, 
+          totalSpentGems: 0, 
+          totalClicks: 0,
+          dailyClicks: 0,
+          lastClickDate: getTodayKey(),
+          lastRefill: Date.now() 
+        };
+        saveUsers(users);
+      }
+      
+      let u = users[currentUserId];
+
+      const today = getTodayKey();
+      if (u.lastClickDate !== today) {
+        u.dailyClicks = 0;
+        u.lastClickDate = today;
+        saveUsers(users);
+      }
+
+      // Offline spin refill calculation
+      const now = Date.now();
+      const elapsedMs = now - (u.lastRefill || now);
+      const hours = Math.floor(elapsedMs / (1000 * 60 * 60));
+      if (hours > 0) {
+        u.spins = Math.min(MAX_SPINS, u.spins + hours);
+        u.lastRefill = u.lastRefill + (hours * 1000 * 60 * 60);
+        saveUsers(users);
+      }
+      return u;
+    }
+
+    function updateUser(u) {
+      const users = getUsers();
+      users[u.id] = u;
+      saveUsers(users);
+      if (u.id === currentUserId) {
+        renderHeader();
+        renderClickerStats();
+      }
+    }
+
+    // LOGIN & ;admin COMMAND LOGIC
+    function handleLoginButtonClick() {
+      const input = document.getElementById('user-id-input').value.trim();
+      if (!input) return alert('ユーザーIDを入力してください');
+
+      if (input === ';admin') {
+        const passContainer = document.getElementById('login-admin-pass-container');
+        if (passContainer.classList.contains('hidden')) {
+          passContainer.classList.remove('hidden');
+          return;
+        }
+
+        const passInput = document.getElementById('login-admin-pass-input').value;
+        if (passInput === ADMIN_PASS) {
+          isAdmin = true;
+          localStorage.setItem('app_is_admin', 'true');
+          currentUserId = "ADMIN";
+          localStorage.setItem('app_current_user', currentUserId);
+          getCurrentUser();
+          showApp();
+          return;
+        } else {
+          return alert('管理者パスワードが違います');
+        }
+      }
+
+      currentUserId = input;
+      isAdmin = false;
+      localStorage.setItem('app_is_admin', 'false');
+      localStorage.setItem('app_current_user', currentUserId);
+      getCurrentUser();
+      showApp();
+    }
+
+    function logout() {
+      currentUserId = null;
+      isAdmin = false;
+      localStorage.removeItem('app_current_user');
+      localStorage.removeItem('app_is_admin');
+      document.getElementById('login-admin-pass-container').classList.add('hidden');
+      document.getElementById('user-id-input').value = '';
+      document.getElementById('login-admin-pass-input').value = '';
+      showLogin();
+    }
+
+    function showLogin() {
+      document.getElementById('login-screen').classList.remove('hidden');
+      document.getElementById('app-screen').classList.add('hidden');
+    }
+
+    function showApp() {
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app-screen').classList.remove('hidden');
+      renderHeader();
+      switchTab('spin');
+    }
+
+    function renderHeader() {
+      const u = getCurrentUser();
+      document.getElementById('display-id').innerText = u.id;
+      document.getElementById('avatar-icon').innerText = u.id.charAt(0).toUpperCase();
+      document.getElementById('gem-count').innerText = u.gems;
+      document.getElementById('spin-count').innerText = u.spins;
+      document.getElementById('admin-badge').classList.toggle('hidden', !isAdmin);
+
+      const adminTabBtn = document.getElementById('tab-admin');
+      const navContainer = document.getElementById('nav-tabs-container');
+      
+      if (isAdmin) {
+        adminTabBtn.classList.remove('hidden');
+        navContainer.className = "grid grid-cols-5 gap-1.5 mb-4 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 shadow-md";
+      } else {
+        adminTabBtn.classList.add('hidden');
+        navContainer.className = "grid grid-cols-4 gap-2 mb-4 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 shadow-md";
+      }
+    }
+
+    // TABS NAVIGATION
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-slate-800', 'text-indigo-400', 'border', 'border-slate-700/50');
+        btn.classList.add('text-slate-400');
+      });
+      const activeBtn = document.getElementById(`tab-${tab}`);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-slate-800', 'text-indigo-400', 'border', 'border-slate-700/50');
+        activeBtn.classList.remove('text-slate-400');
+      }
+
+      ['spin', 'clicker', 'chat', 'admin', 'ranking'].forEach(t => {
+        const el = document.getElementById(`content-${t}`);
+        if (el) el.classList.add('hidden');
+      });
+      document.getElementById(`content-${tab}`).classList.remove('hidden');
+
+      if (tab === 'clicker') renderClickerStats();
+      if (tab === 'chat') renderUserThreads();
+      if (tab === 'ranking') renderRanking();
+    }
+
+    // GACHA SPIN
+    function doSpin() {
+      const u = getCurrentUser();
+      if (u.spins < 1) return alert('スピンが足りません！');
+
+      u.spins -= 1;
+      updateUser(u);
+
+      const icon = document.getElementById('spin-icon');
+      const res = document.getElementById('spin-result');
+      icon.classList.add('spin-anim');
+      res.innerText = 'ガチャを回しています...';
+
+      setTimeout(() => {
+        icon.classList.remove('spin-anim');
+        const rand = Math.random() * 100;
+        let earned = 0;
+
+        if (rand < 0.01) earned = 14;
+        else if (rand < 0.06) earned = 10;
+        else if (rand < 0.16) earned = 7;
+        else if (rand < 0.66) earned = 5;
+        else if (rand < 1.66) earned = 3;
+
+        if (earned > 0) {
+          u.gems += earned;
+          updateUser(u);
+          res.innerHTML = `<span class="text-amber-400 font-black">🎉 大当たり！ ${earned} ゼム GET！</span>`;
+        } else {
+          res.innerText = 'ハズレ... また挑戦してね！';
+        }
+      }, 600);
+    }
+
+    function buySpinWithGems() {
+      const u = getCurrentUser();
+      if (u.gems < 5) return alert('ゼムが足りません（必要: 5ゼム）');
+      if (u.spins >= MAX_SPINS) return alert(`スピンは最大上限(${MAX_SPINS}回)に達しています`);
+
+      u.gems -= 5;
+      u.spins = Math.min(MAX_SPINS, u.spins + 1);
+      updateUser(u);
+      alert('1スピンを購入しました！');
+    }
+
+    function updateRefillTimer() {
+      if (!currentUserId) return;
+      const u = getCurrentUser();
+      const timerEl = document.getElementById('refill-timer');
+      if (u.spins >= MAX_SPINS) {
+        timerEl.innerText = 'MAX (25/25)';
+        return;
+      }
+      const nextRefill = (u.lastRefill || Date.now()) + (1000 * 60 * 60);
+      const remaining = Math.max(0, Math.floor((nextRefill - Date.now()) / 1000));
+      const m = String(Math.floor(remaining / 60)).padStart(2, '0');
+      const s = String(remaining % 60).padStart(2, '0');
+      timerEl.innerText = `${m}:${s}`;
+    }
+
+    // CLICKER
+    function renderClickerStats() {
+      const u = getCurrentUser();
+      document.getElementById('total-click-count').innerText = u.totalClicks || 0;
+      document.getElementById('daily-click-count').innerText = u.dailyClicks || 0;
+    }
+
+    function doClick() {
+      if (clickCooldown) return;
+      
+      const u = getCurrentUser();
+      if ((u.dailyClicks || 0) >= DAILY_CLICK_LIMIT) {
+        document.getElementById('clicker-feedback').innerHTML = '<span class="text-red-400 font-bold">本日の上限 (2,500回) に達しました</span>';
+        return;
+      }
+
+      clickCooldown = true;
+      setTimeout(() => clickCooldown = false, 200);
+
+      u.totalClicks = (u.totalClicks || 0) + 1;
+      u.dailyClicks = (u.dailyClicks || 0) + 1;
+
+      const feedback = document.getElementById('clicker-feedback');
+      const rand = Math.random() * 100;
+
+      if (rand < 0.1) {
+        if (u.spins < MAX_SPINS) {
+          u.spins += 1;
+          feedback.innerHTML = '<span class="text-amber-400 font-black">🌟 大当たり！1スピンGET！</span>';
+        } else {
+          feedback.innerText = '1スピン獲得！(最大上限中)';
+        }
+      } else {
+        feedback.innerText = 'タップ！';
+      }
+
+      updateUser(u);
+    }
+
+    // CHAT & THREAD SYSTEM
+    function sendNewThread() {
+      if (isAdmin) return alert('管理者アカウントからは新規スレッドの送信はできません。');
+
+      const gemsInput = document.getElementById('chat-gem-input');
+      const msgInput = document.getElementById('chat-msg-input');
+      const cost = parseInt(gemsInput.value);
+      const text = msgInput.value.trim();
+
+      if (isNaN(cost) || cost <= 0) return alert('使用するゼム数を入力してください');
+      if (!text) return alert('メッセージを入力してください');
+
+      const u = getCurrentUser();
+      if (u.gems < cost) return alert('ゼムが足りません！');
+
+      u.gems -= cost;
+      u.totalSpentGems = (u.totalSpentGems || 0) + cost;
+      updateUser(u);
+
+      const threads = getThreads();
+      const newThread = {
+        id: 't_' + Date.now(),
+        userId: currentUserId,
+        spentGems: cost,
+        createdAt: Date.now(),
+        messages: [{
+          id: 'm_' + Date.now(),
+          sender: currentUserId,
+          text: text,
+          timestamp: Date.now(),
+          read: false,
+          deleteRequested: false
+        }]
+      };
+
+      threads.unshift(newThread);
+      saveThreads(threads);
+
+      gemsInput.value = '';
+      msgInput.value = '';
+      renderUserThreads();
+      alert('メッセージを送信しました！');
+    }
+
+    function replyToThread(threadId) {
+      const input = document.getElementById(`reply-input-${threadId}`);
+      const text = input.value.trim();
+      if (!text) return;
+
+      const threads = getThreads();
+      const t = threads.find(x => x.id === threadId);
+      if (!t) return;
+
+      t.messages.push({
+        id: 'm_' + Date.now(),
+        sender: isAdmin ? 'ADMIN' : currentUserId,
+        text: text,
+        timestamp: Date.now(),
+        read: false,
+        deleteRequested: false
+      });
+
+      saveThreads(threads);
+      renderUserThreads();
+    }
+
+    function requestDeleteMessage(threadId, msgId) {
+      if (!confirm('このメッセージの削除申請を管理者に送信しますか？')) return;
+      const threads = getThreads();
+      const t = threads.find(x => x.id === threadId);
+      if (!t) return;
+      const m = t.messages.find(x => x.id === msgId);
+      if (m) {
+        m.deleteRequested = true;
+        saveThreads(threads);
+        renderUserThreads();
+        alert('管理者へ削除申請を行いました');
+      }
+    }
+
+    function approveDelete(threadId, msgId) {
+      const threads = getThreads();
+      const t = threads.find(x => x.id === threadId);
+      if (!t) return;
+      t.messages = t.messages.filter(m => m.id !== msgId);
+      saveThreads(threads);
+      renderUserThreads();
+    }
+
+    function rejectDelete(threadId, msgId) {
+      const threads = getThreads();
+      const t = threads.find(x => x.id === threadId);
+      if (!t) return;
+      const m = t.messages.find(x => x.id === msgId);
+      if (m) m.deleteRequested = false;
+      saveThreads(threads);
+      renderUserThreads();
+    }
+
+    function renderUserThreads() {
+      const allThreads = getThreads();
+      const container = document.getElementById('user-threads-list');
+      const newThreadForm = document.getElementById('new-thread-form-container');
+      const adminNotice = document.getElementById('admin-chat-notice');
+
+      if (isAdmin) {
+        newThreadForm.classList.add('hidden');
+        adminNotice.classList.remove('hidden');
+      } else {
+        newThreadForm.classList.remove('hidden');
+        adminNotice.classList.add('hidden');
+      }
+
+      const threads = isAdmin ? allThreads : allThreads.filter(t => t.userId === currentUserId);
+
+      // Read state update
+      let updated = false;
+      threads.forEach(t => {
+        t.messages.forEach(m => {
+          if (isAdmin) {
+            if (m.sender !== 'ADMIN' && !m.read) {
+              m.read = true;
+              updated = true;
+            }
+          } else {
+            if (m.sender === 'ADMIN' && !m.read) {
+              m.read = true;
+              updated = true;
+            }
+          }
+        });
+      });
+      if (updated) saveThreads(allThreads);
+
+      if (threads.length === 0) {
+        container.innerHTML = '<div class="text-center py-10 text-xs text-slate-500 font-bold">メッセージ履歴はありません</div>';
+        return;
+      }
+
+      container.innerHTML = threads.map(t => {
+        const hasAdminReply = t.messages.some(m => m.sender === 'ADMIN');
+        return `
+          <div class="bg-slate-900/90 p-4.5 rounded-3xl border border-slate-800 shadow-xl space-y-3 backdrop-blur-md">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5 text-xs">
+              <span class="text-slate-400 font-mono">送信者: <strong class="text-indigo-400">${t.userId}</strong> (このチャットを立てるのに使ったゼム: <strong class="text-cyan-400">${t.spentGems} ゼム</strong>)</span>
+              ${hasAdminReply ? '<span class="px-2.5 py-0.5 bg-emerald-950 text-emerald-400 border border-emerald-800/80 rounded-full font-bold text-[10px]">管理者返信あり</span>' : '<span class="text-slate-500 text-[10px]">管理者返信待ち</span>'}
+            </div>
+
+            <div class="space-y-2.5 text-xs py-1">
+              ${t.messages.map(m => {
+                // Determine if the message was sent by the currently logged-in user/view
+                const isSentByMe = isAdmin ? (m.sender === 'ADMIN') : (m.sender === currentUserId);
+                
+                return `
+                  <div class="flex flex-col ${isSentByMe ? 'items-end' : 'items-start'}">
+                    <div class="max-w-[85%] p-3 rounded-2xl ${isSentByMe ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-100 rounded-tl-none'} shadow-md">
+                      <div class="text-[10px] text-slate-400 mb-0.5 font-bold">${m.sender}</div>
+                      <p class="leading-relaxed break-words">${m.text}</p>
+                      ${m.deleteRequested ? `
+                        <div class="mt-2 pt-1 border-t border-slate-700/60 text-[10px] text-amber-300 font-bold flex items-center justify-between gap-2">
+                          <span><i class="fa-solid fa-clock mr-1"></i>削除申請中</span>
+                          ${isAdmin ? `
+                            <div class="flex gap-1">
+                              <button onclick="approveDelete('${t.id}', '${m.id}')" class="px-2 py-0.5 bg-red-600 text-white rounded font-bold hover:bg-red-500">承認削除</button>
+                              <button onclick="rejectDelete('${t.id}', '${m.id}')" class="px-2 py-0.5 bg-slate-700 text-slate-300 rounded hover:bg-slate-600">拒否</button>
+                            </div>
+                          ` : ''}
+                        </div>
+                      ` : ''}
+                    </div>
+                    <div class="flex items-center gap-2 mt-1 text-[10px] text-slate-500 font-mono">
+                      <span>${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                      
+                      <!-- READ STATUS -->
+                      ${isSentByMe && m.read ? '<span class="text-indigo-400 font-bold">既読</span>' : ''}
+                      
+                      ${!isAdmin && isSentByMe && !m.deleteRequested ? `<button onclick="requestDeleteMessage('${t.id}', '${m.id}')" class="hover:text-red-400 transition"><i class="fa-solid fa-trash"></i></button>` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+
+            <div class="flex gap-2 pt-2 border-t border-slate-800/60">
+              <input type="text" id="reply-input-${t.id}" placeholder="${isAdmin ? '管理者として返信...' : (hasAdminReply ? '返信' : '返信を入力...')}" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100">
+              <button onclick="replyToThread('${t.id}')" class="px-4 py-2 ${isAdmin ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'} font-bold text-xs rounded-xl transition">返信</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // RANKING (EXCLUDE ADMINS)
+    function renderRanking() {
+      const users = Object.values(getUsers())
+        .filter(u => u.id !== 'ADMIN' && u.id !== ';admin')
+        .sort((a, b) => (b.totalSpentGems || 0) - (a.totalSpentGems || 0));
+        
+      const container = document.getElementById('ranking-list');
+
+      if (users.length === 0) {
+        container.innerHTML = '<div class="text-center py-6 text-xs text-slate-500">プレイヤーデータがありません</div>';
+        return;
+      }
+
+      container.innerHTML = users.map((u, i) => `
+        <div class="flex items-center justify-between p-3.5 bg-slate-950/60 rounded-2xl border border-slate-800/60 text-xs">
+          <div class="flex items-center gap-3">
+            <span class="font-black w-6 text-center ${i===0?'text-amber-400 text-sm':i===1?'text-slate-300':i===2?'text-amber-600':'text-slate-500'}">#${i+1}</span>
+            <span class="font-bold text-slate-200">${u.id}</span>
+          </div>
+          <span class="text-cyan-400 font-bold font-mono"><i class="fa-solid fa-gem mr-1"></i>${u.totalSpentGems || 0} ゼム</span>
+        </div>
+      `).join('');
+    }
+
+    // ADMIN RESOURCE MODIFY
+    function adminModifyUser() {
+      const targetId = document.getElementById('admin-target-id').value.trim();
+      const addGems = parseInt(document.getElementById('admin-add-gems').value) || 0;
+      const addSpins = parseInt(document.getElementById('admin-add-spins').value) || 0;
+
+      if (!targetId) return alert('対象ユーザーIDを入力してください');
+
+      const users = getUsers();
+      if (!users[targetId]) {
+        users[targetId] = { id: targetId, gems: 0, spins: 10, totalSpentGems: 0, lastRefill: Date.now() };
+      }
+
+      users[targetId].gems = Math.max(0, users[targetId].gems + addGems);
+      users[targetId].spins = Math.min(MAX_SPINS, Math.max(0, users[targetId].spins + addSpins));
+      saveUsers(users);
+
+      renderHeader();
+      alert(`ユーザー [${targetId}] のリソースを変更しました`);
+    }
+  </script>
+</body>
+</html>
